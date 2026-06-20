@@ -1,13 +1,11 @@
 (** xmlerr, xml parsing with error *)
 (* Copyright (C) 2010 Florent Monnier, Some rights reserved
-  Contact: <monnier.florent(_)gmail.com>
+  Issues: https://github.com/fccm/ocaml-xmlerr/issues
 
  Permission to use, copy, modify, distribute, and sell this software and
- its documentation for any purpose is hereby granted without fee, provided
- that the above copyright notice appear in all copies and that both that
- copyright notice and this permission notice appear in supporting documentation.
+ its documentation for any purpose is hereby granted without fee.
  No representations are made about the suitability of this software for any
- purpose.  It is provided "as is" without express or implied warranty.
+ purpose.  It is provided "AS IS" without express or implied warranty.
 *)
 
 type attr = string * string
@@ -24,12 +22,11 @@ type src = {
 }
 
 let get_char = String.unsafe_get
-let set_char = String.unsafe_set
 
 let str_sub str ofs len =  (* String.unsafe_sub *)
-  let s = String.create len in
+  let s = Bytes.create len in
   String.unsafe_blit str ofs s 0 len;
-  s
+  (Bytes.unsafe_to_string s)
 
 let string_input str =
   let len = String.length str in
@@ -44,10 +41,10 @@ let ic_input ic =
     sub =
       (fun ofs len ->
         seek_in ic ofs;
-        let buf = String.create len in
+        let buf = Bytes.create len in
         let got = input ic buf 0 len in
-        if got = len then (buf)
-        else String.sub buf 0 got)
+        if got = len then (Bytes.to_string buf)
+        else String.sub (Bytes.to_string buf) 0 got)
   }
 
 let index s i c =
@@ -341,7 +338,7 @@ let strip str =
   let s = String.sub str i1 (i2 - i1 + 1) in
   (Some s)
 
-let strip_white xs =
+let strip_space xs =
   let rec aux acc = function
   | (Data d) :: xs ->
       begin match strip d with
@@ -358,16 +355,16 @@ let x_lowercase =
   let rec lower_attr acc = function
     | [] -> List.rev acc
     | (field, value) :: xs ->
-        let attr = (String.lowercase field, value) in
+        let attr = (String.lowercase_ascii field, value) in
         lower_attr (attr::acc) xs
   in
   let rec aux acc = function
   | Tag (name, attrs) :: xs ->
-      let name = (String.lowercase name)
+      let name = (String.lowercase_ascii name)
       and attrs = lower_attr [] attrs in
       aux ((Tag (name, attrs)) :: acc) xs
   | ETag (name) :: xs ->
-      let etag = ETag (String.lowercase name) in
+      let etag = ETag (String.lowercase_ascii name) in
       aux (etag::acc) xs
   | x::xs ->
       aux (x::acc) xs
@@ -409,48 +406,62 @@ let print_html xs =
   in
   let rec print_x = function
   | Tag (name1, attrs) ::
-    ETag (name2) :: xs ->
-      if name1 = name2 then
-        begin
-          print_char '<';
-          print_string name1;
-          print_attrs attrs;
-          print_string "/>";
-          print_x xs
-        end
-      else
-        begin
-          print_char '<';
-          print_string name1;
-          print_attrs attrs;
-          print_string "></";
-          print_string name2;
-          print_char '>';
-          print_x xs
-        end
+    ETag (name2) :: xs
+    when name1 = name2 ->
+      begin
+        print_char '<';
+        print_string name1;
+        print_attrs attrs;
+        print_char ' ';
+        print_string "/>";
+        print_string "\n";
+        print_x xs
+      end
+  | Tag (name1, attrs) ::
+    Data d ::
+    ETag (name2) :: xs
+    when name1 = name2 ->
+      begin
+        print_char '<';
+        print_string name1;
+        print_attrs attrs;
+        print_char '>';
+
+        print_string d;
+
+        print_string "</";
+        print_string name2;
+        print_char '>';
+        print_char '\n';
+
+        print_x xs
+      end
   | Tag (name, attrs) :: xs ->
       print_char '<';
       print_string name;
       print_attrs attrs;
       print_char '>';
+      print_char '\n';
       print_x xs
   | ETag (name) :: xs ->
       print_string "</";
       print_string name;
       print_char '>';
+      print_char '\n';
       print_x xs
   | Data d :: xs ->
       print_string d;
+      print_string "\n";
       print_x xs
   | Comm c :: xs ->
       print_string "<!--";
       print_string c;
-      print_string "-->";
+      print_string "-->\n";
       print_x xs
   | [] -> ()
   in
   print_x xs;
-  print_newline()
+  print_newline ()
 
 
 let print_code xs =
@@ -470,16 +481,16 @@ let print_code xs =
       Printf.printf "  Comm (%S)\n" c
   in
   List.iter print_x xs;
-  print_newline()
+  print_newline ()
 
 
 let read_file f =
   let ic = open_in f in
   let n = in_channel_length ic in
-  let s = String.create n in
+  let s = Bytes.create n in
   really_input ic s 0 n;
   close_in ic;
-  (s)
+  (Bytes.to_string s)
 
 let parse_file ~filename:f =
   parse_string (read_file f)

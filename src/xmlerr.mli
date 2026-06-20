@@ -1,6 +1,6 @@
-(** xmlerr, xml parsing with error *)
+(** xmlerr, parsing xml with errors *)
 (* Copyright (C) 2010 Florent Monnier, Some rights reserved
-  Contact: <monnier.florent(_)gmail.com>
+  Issues: https://github.com/fccm/ocaml-xmlerr/issues
 
  Permission to use, copy, modify, distribute, and sell this software and
  its documentation for any purpose is hereby granted without fee, provided
@@ -28,8 +28,8 @@ val parse_f : 'a -> (t -> 'a -> 'a) -> src -> 'a
 val parse_string : string -> t list
 val parse_file : filename:string -> t list
 
-val strip_white : t list -> t list
-(** remove whitespace from beginning and ending of PCData *)
+val strip_space : t list -> t list
+(** remove space from beginning and ending of PCData *)
 
 val x_lowercase : t list -> t list
 (** translate tag names and attr names to lowercase *)
