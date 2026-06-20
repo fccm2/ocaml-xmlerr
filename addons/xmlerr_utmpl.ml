@@ -1,4 +1,4 @@
-(** Utility functions *)
+(** Untemplating Utility functions *)
 (* Copyright (C) 2012 Florent Monnier, Some rights reserved
   Issues: https://github.com/fccm/ocaml-xmlerr/issues
 
@@ -17,10 +17,28 @@ let rec for_all2 p l1 l2 =
   | (_, _) -> false
 
 
+let cmp_pat s =
+  match String.length s with
+  | 0 -> false
+  | 1 -> (s = "@")
+  | n -> (s.[0] = '@' && s.[n-1] = '@')
+
+
 let cmp_attr (a1, v1) (a2, v2) =
   (a1 = a2) && (
-    (v1 = v2) || (v1 = "_") || (v1 = "@")
+    (v1 = v2) || (v1 = "_") || (v1 = "@") || (v1 = "@@") || cmp_pat v1
   )
+
+
+let xtr_pat s =
+  match String.length s with
+  | 0 -> None
+  | 1 -> if s = "@" then Some "" else None
+  | 2 -> if s = "@@" then Some "" else None
+  | n ->
+      if s.[0] = '@' && s.[n-1] = '@'
+      then Some (String.sub s 1 (n-2))
+      else None
 
 
 let cmp tp xs =
@@ -28,13 +46,11 @@ let cmp tp xs =
   | t :: ts, x :: xs ->
       let matched =
         match t, x with
-        | Data "@", Data s
         | Data "_", Data s -> true
-        | Data s1, Data s2 -> (s1 = s2)
+        | Data s1, Data s2 -> cmp_pat s1 || (s1 = s2)
         | ETag e1, ETag e2 -> (e1 = e2)
-        | Comm "@", Comm c
         | Comm "_", Comm c -> true
-        | Comm c1, Comm c2 -> (c1 = c2)
+        | Comm c1, Comm c2 -> cmp_pat c1 || (c1 = c2)
         | Tag (g1, attrs1), Tag (g2, attrs2) ->
             (g1 = g2) && (for_all2 cmp_attr attrs1 attrs2)
         | _ -> false
@@ -47,8 +63,11 @@ let cmp tp xs =
 
 let extr_attrs attrs1 attrs2 =
   let rec aux acc = function
-  | (_, "@")::t1, (_, v)::t2 -> aux (v::acc) (t1, t2)
-  | _::t1, _::t2 -> aux acc (t1, t2)
+  | (_, sun)::t1, (_, v)::t2 ->
+      begin match xtr_pat sun with
+      | Some unt -> aux ((unt, v)::acc) (t1, t2)
+      | None -> aux acc (t1, t2)
+      end
   | _ -> List.rev acc
   in
   aux [] (attrs1, attrs2)
@@ -58,12 +77,13 @@ let extr tp xs =
   let rec aux acc = function
   | t :: ts, x :: xs ->
       begin match t, x with
-      | Data "@", Data k
-      | Comm "@", Comm k ->
-          aux (k::acc) (ts, xs)
-      | Data _, Data _
-      | ETag _, ETag _
-      | Comm _, Comm _ ->
+      | Data sun, Data v
+      | Comm sun, Comm v ->
+          begin match xtr_pat sun with
+          | Some unt -> aux ((unt, v)::acc) (ts, xs)
+          | None -> aux acc (ts, xs)
+          end
+      | ETag _, ETag _ ->
           aux acc (ts, xs)
       | Tag (_, attrs1), Tag (_, attrs2) ->
           let ks = extr_attrs attrs1 attrs2 in
@@ -97,21 +117,3 @@ let extract tp xs =
       else aux acc tl
   in
   aux [] xs
-
-
-let webstr s =
-  let n = String.length s in
-  let b = Buffer.create n in
-  let rec aux i =
-    if i >= n then Buffer.contents b else
-    match s.[i] with
-    | '%' ->
-        let sd = Printf.sprintf "0x%c%c" s.[i+1] s.[i+2] in
-        let d = int_of_string sd in
-        Buffer.add_char b (char_of_int d);
-        aux (i+3)
-    | c ->
-        Buffer.add_char b c;
-        aux (i+1)
-  in
-  aux 0
